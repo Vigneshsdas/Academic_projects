@@ -1,0 +1,314 @@
+---
+title: "Happiness Analysis 2019"
+author: "Vignesh Sankaradas"
+date: "December 12, 2021"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc: true
+    toc_float:
+      collapsed: yes
+      smooth_scroll: true
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE) 
+#install.packages("dplyr")
+#install.packages("qqplotr")
+#install.packages("car")
+```
+
+```{r ,message=FALSE}
+library(knitr)
+library(rmarkdown)
+library(ggplot2)
+library(plotly)
+library(data.table)
+library(treemap)
+library(dplyr)
+library(corrplot)
+library(qqplotr)
+library(car)
+```
+
+### Introduction- World Happiness report
+
+The World Happiness Report is a landmark survey of the state of global happiness. The report continues to gain global recognition as governments, organizations and civil society increasingly use happiness indicators to inform their policy-making decisions. Leading experts across fields – economics, psychology, survey analysis, national statistics, health, public policy and more – utilize these measurements of well-being to effectively assess the progress of nations. <br />
+The happiness scores and rankings use data from the Gallup World Poll. The scores are based on answers to the main life evaluation question asked in the poll. This question, known as the Cantril ladder, asks respondents to think of a ladder with the best possible life for them being a 10 and the worst possible life being a 0 and to rate their own current lives on that scale.The scores are from nationally representative samples for the year 2019 and used the Gallup weights to make the estimates representative. 
+
+### Research Scenario
+The happiness reports review the state of happiness in the world today and show how the new science of happiness explains personal and national variations in happiness.These scores are independent of the scores reported for each country, but they do explain why some countries rank higher than others. The happiness rankings are determined from nationally representative samples with a typical sample size of 1,000 people per nation to make the estimates representative. All numeric data is scaled between 1 to 10. In this project, we explore the relation between these calculated happiness metric's and how they affect the happiness score. 
+
+### Research Questions
+
+1. Is there a statistically significant difference in the mean happiness scores of respondents in the West vs the rest of the world?
+2. Correlation between happiness metrics. 
+3. Does generosity correlate with the happiness of a country?
+
+### Data set Overview
+Data is collected by SDSN and is available online [here](https://www.kaggle.com/unsdsn/world-happiness) \
+For this project, data was dowloaded as a csv file.
+
+```{r}
+happiness = read.csv("/Users/vigneshsankardas/Desktop/Class/Projects/555_HappinessAnalysis/Raw_Data/Happiness_2019.csv")
+WorldHappinessReport2019<-data.frame(happiness)
+colnames(WorldHappinessReport2019)
+```
+Each case represents a country from around a world. There are 156 observations in the given data set from 2019.
+
+The data set contains 9 variables:
+
+* Overall Rank (numeric)- Global ranking based on the happiness score
+* Country or region (char)- Country on which survey was performed. 
+* Score (numeric)- Average happiness score of the country
+* GDP per capita (numeric)- Per capita Gross Domestic product of the Country. 
+* Social Support (numeric)- Social support is the perception and actuality that one is cared for, has assistance available from other people, and most popularly, that one is part of a supportive social network. These supportive resources can be emotional, informational, or companionship ; tangible or intangible.
+* Healthy life expectancy (numeric) - Healthy life expectancy is the average life in good health - that is to say without irreversible limitation of activity in daily life or incapacities - of a fictitious generation subject to the conditions of mortality and morbidity prevailing that year.
+* Freedom to make life choices (numeric) - describes an individual's opportunity and autonomy to perform an action selected from at least two available options, unconstrained by external parties.
+Perception of corruption (numeric)- an index that scores countries on the perceived levels of government corruption by country.
+* Generosity (numeric)- The quality of being kind and generous.
+
+All numeric parameters above are scaled between 1 to 10.
+
+Data Set Preview :-
+
+```{r,message=FALSE}
+paged_table(WorldHappinessReport2019)
+```
+
+### Data Preparation and Cleaning
+
+```{r,message=FALSE}
+colSums(is.na(WorldHappinessReport2019))
+```
+There are no missing values in the original data set. \
+
+```{r,message=FALSE}
+WorldHappinessReport2019 <- WorldHappinessReport2019 %>% rename(Country = "Country.or.region")
+WHI_2019 <- data.table(WorldHappinessReport2019) ; 
+WHI_2019[, Area := ifelse(Country %in%  c("Bahamas","Barbados", "Belize",
+                                          "Canada", "Costa Rica", "Cuba",
+                                          "Dominica","Dominican Republic",
+                                          "El Salvador","Grenada", "Guatemala",
+                                          "Haiti","Honduras","Jamaica",
+                                          "Mexico","Nicaragua","Panama", 
+                                          "Saint Kitts and Nevis","Saint
+                                          Lucia","Trinidad and Tobago",
+                                          "United States"),"West",
+                          "Rest of the World")]
+```
+
+We add an extra parameter to classily the Countries in the West from the rest of the world for analysis purposes. <br />
+Data set sample after adding the new Area Classification parameter. \
+
+```{r, message=FALSE}
+head(paged_table(WHI_2019[,c(10,1:9)]), 10)
+```
+Numeric Columns :
+```{r}
+num_cols = unlist(lapply(WorldHappinessReport2019, is.numeric)) ; num_cols
+num = WorldHappinessReport2019[ , num_cols]
+```
+
+### Feature Distribution
+```{r, message=FALSE}
+library(Hmisc)
+hist.data.frame(num)
+
+```
+
+**Score** follows an approximately normal distribution.<br />
+**Social.support**, **healthy.life.expectancy** and **Freedom.to.make.life.choices** have left skewed distribution, meaning the medians of these two features will be greater than their means.<br />
+**Generosity** and **Perceptions.of.corruption** have slightly right skewed distribution. 
+<br />
+<br />
+
+### Descriptive Statistics 
+```{r}
+WHI_2019 %>% group_by(Area) %>% summarise(Min = min(Score,na.rm = TRUE),
+                                           Q1 = quantile(Score,probs = .25,na.rm = TRUE),
+                                           Median = median(Score,na.rm = TRUE),
+                                           Q3 = quantile(Score,probs = .75,na.rm = TRUE),
+                                           Max = max(Score,na.rm = TRUE),
+                                           Mean = mean(Score, na.rm = TRUE),
+                                           SD = sd(Score, na.rm = TRUE),
+                                           n = n(),
+                                           Missing = sum(is.na(Score))) -> table1
+knitr::kable(table1)
+```
+* A review of the summary statistics indicate that the mean score of the West is higher than the rest of the world.
+
+* The median for the West is approximately 0.1 points higher than the mean indicating a left skew in the distribution
+
+* The minimum for the Rest of the world is more than 0.7 points lower than the west. 
+
+### Box plot of Happiness based on Area
+```{r}
+WHI_2019 %>% boxplot(Score ~ Area, data = ., ylab = "Happiness Score", col=c('pink', 'sky blue'))
+```
+
+* Box plot shows that there is a difference in the mean happiness scores between the West and rest of the world. 
+
+* There is one outlier in the West group. 
+
+### Top 20 Happiest Countries
+
+```{r}
+top20<-WHI_2019 %>% filter(Overall.rank<=20)%>% arrange(desc(Score))
+top20$label<-paste(top20$Country,top20$Overall.rank ,top20$Score  ,sep="\n ")
+ options(repr.plot.width=12, repr.plot.height=8) 
+ 
+  treemap(top20,
+          index=c("label"),
+          vSize="Score",
+          vColor="Overall.rank",
+          type="value",
+          title="Top 20 Happiness Countries -2019",
+          palette=terrain.colors(20),
+         command.line.output = TRUE, 
+              format.legend = list(scientific = FALSE, big.mark = " "))
+```
+
+### Correlation between happiness metrices
+```{r}
+corrplot(cor(WHI_2019 %>% 
+               select(Score:Perceptions.of.corruption)), 
+         method="color",  
+         sig.level = 0.01, insig = "blank",
+         addCoef.col = "black", 
+         tl.srt=45, 
+         type="lower"
+         )
+```
+
+**HappinessScore** has high positive correlation with 'GDP.per.capita' , 'Social.support', 'Healthy.life.expectancy' and has very low correlation with 'Generosity' . \ 
+
+'Healthy.life.expectancy' has very high positive correlation of 0.84 with 'GDP.per.capita'. 
+
+### Testing Normality
+
+While not necessary for this analysis due to the sample sizes being greater than 30 (n = 31 and n = 125 for West and Rest of the World respectively), we plot Q-Q plots for both groups to investigate for normality.
+
+```{r}
+HS_west <- WHI_2019 %>% filter(Area == "West")
+HS_west$Score %>% qqPlot(dist="norm", main = "QQ plot - Happiness Scores - West", col= 'dark blue', col.lines = 'sky blue')
+```
+
+```{r}
+HS_ROW<- WHI_2019 %>% filter(Area == "Rest of the World") ; 
+HS_ROW$Score %>% qqPlot(dist="norm", main = "QQ plot - Happiness Scores -Rest of the World", col= 'red', col.lines = 'pink')
+
+```
+
+* The data points fall close to the diagonal lines for both of the two groups indicating overall normally distributed.
+
+* However an ‘s’ shape is observed in both groups indicating non-normality
+
+* This does not matter however as per the Central Limit Theorem; when the sample size is large, the sampling distribution of a mean will be approximately normally distributed, regardless of the underlying population distribution
+
+### Testing Homogeneity of variance 
+
+Leven's Test - funciton in R to compare the variances of the two groups
+
+If the variances between the two groups are not equal then we would expect a statistically significant difference in the output of the levenTest()
+
+```{r}
+leveneTest(Score ~ Area , data = WHI_2019)
+```
+
+* The p-value for the Levene’s test of equal variance is 0.0826 (> 0.05)
+
+* Since the p-value > 0.05, we assume equal variance for both.
+
+### Hypothesis-Testing
+
+Null Hypothesis : H0:μ1−μ2=0; The difference in the mean happiness score between the West vs Rest of the world is 0 \
+
+Alternate Hypothesis : H1:μ1−μ2≠0; The difference in the mean happiness score between the West vs Rest of the world is not 0 \
+
+Significance Level = 0.05 \
+
+Decision Rule : p-value > 0.05 ; Reject the null hypothesis \
+
+```{r}
+t.test(
+  WHI_2019$Score ~ WHI_2019$Area,
+  data = WHI_2019,
+  var.equal = TRUE,
+  alternative = "two.sided"
+  )
+```
+
+* Using the p-value method to test the hypothesis, as the p-value = 0.0154 < 0.05, we fail to reject H0.
+
+* There is no statistically significant difference between the means of the  happiness scores between the West and the Rest of the World.
+
+### Scatterplot 
+```{r,message=FALSE}
+plot_ly(data = WHI_2019, 
+        x=~Generosity, y=~Score, color=~Generosity, type = "scatter",
+        text = ~paste("Country:", Country)) %>% 
+        layout(title = "Happiness and Generocity ", 
+               xaxis = list(title = "Generosity"),
+               yaxis = list(title = "Happiness Score"))
+```
+
+### Linear Model
+The dependent variable 'Score' and independent variable 'Generosity' are quantitative parameters.
+<br />
+
+**R^2**
+```{r, echo=TRUE}
+model <- lm( Score  ~ Generosity,
+             data = WHI_2019)
+summary(model)$adj.r.squared 
+```
+
+#### Model Summary
+```{r}
+summary(model)
+```
+
+Linear Model : **HappinessScore = 5.2433 + (0.8861 x Generosity)**
+
+### Residual Analysis
+```{r}
+par.orig <- par(mfrow=c(2,2))
+plot(log(WHI_2019$Score), resid(model), main="Predictors vs Residuals")
+abline(0,0)
+plot(fitted(model), resid(model),main="Fitted vs Residuals", xlab="Fitted Values")
+abline(0,0)
+qqnorm(resid(model), main="QQ-Plot of Residuals")
+qqline(resid(model))
+hist(resid(model), main="Histogram of Residuals")
+```
+
+### Generosity further analysis
+
+```{r,echo=FALSE}
+max_g <- max(WorldHappinessReport2019$Generosity) 
+
+paste0("Country with highest Generosity of ", max_g," is ",
+      subset(WorldHappinessReport2019[c(2,8)], Generosity == max_g)[1]) ; 
+
+min_g <- min(WorldHappinessReport2019$Generosity)
+paste0("Country with lowest Generosity of ", min_g," is ",
+       subset(WorldHappinessReport2019[c(2,8)], Generosity == min_g)[1]) ; 
+```
+
+### Conclusions
+
+* After analyzing data of Global Happiness Levels in the world, created by the United Nations Sustainable Development Solutions Network,I was able to discover that there is no significant impact of the generosity factor in determining “happiness”.
+
+* The results of the two-sample t-test assuming equal variance did not find a statistically significant difference between the mean happiness scores of the West and the rest of the world, t(df=154)=−2.45, p=0.0154, 95% CI for the difference in means [-1.4568199, -0.1562356].
+
+* HappinessScore has high positive correlation with ‘GDP.per.capita’ , ‘Social.support' , meaning richer the Country, happier the people. 
+
+* The results of the investigation suggest that the West does not have a significantly higher average happiness score than the rest of the world.
+
+
